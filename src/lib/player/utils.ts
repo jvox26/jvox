@@ -1,23 +1,4 @@
-// =====================================================================
-// PLAYER UTILITIES
-// - URL encode/decode (base64url) with raw-URL fallback
-// - Anti-bot detection
-// - Anti-adblock detection (bait div)
-// - Anti-bom-click guard (sliding-window rate limiter)
-// - Hash router helpers
-// =====================================================================
-
 import { getConfig, PlayerConfig } from "./config";
-
-// ---------------------------------------------------------------------
-// ENCODE / DECODE
-// ---------------------------------------------------------------------
-// We use raw URL encoding (encodeURIComponent) so the id parameter
-// matches the spec format:  ?id=https://video.twimg.com/...mp4?tag=29
-//
-// The decoder is backward-compatible: it also accepts legacy base64url
-// strings (in case older links are still in the wild).
-
 export function encodeId(src: string): string {
   if (!src) return "";
   return encodeURIComponent(src);
@@ -26,7 +7,6 @@ export function encodeId(src: string): string {
 export function decodeId(id: string): string {
   if (!id) return "";
 
-  // 1) Try raw URL decode first (current format)
   let urlDecoded = id;
   try {
     urlDecoded = decodeURIComponent(id);
@@ -150,13 +130,9 @@ export function runAntiBotChecks(cfg?: PlayerConfig): BotCheckResult {
     }
   }
 
-  // 4) No referrer on a video page (often bots)
   if (c.antiBot.blockNoReferrer) {
-    // We allow direct entry; this is just a soft signal.
-    // Don't block on referrer alone — too many false positives.
   }
 
-  // 5) Automation flags — window.cdc_... (ChromeDriver), _$trueValue (Playwright)
   if (c.antiBot.blockAutomationFlags) {
     const w = window as any;
     const autoKeys = Object.keys(w).filter((k) =>
@@ -166,10 +142,6 @@ export function runAntiBotChecks(cfg?: PlayerConfig): BotCheckResult {
     );
     if (autoKeys.length > 0) reasons.push("Automation marker: " + autoKeys.join(", "));
   }
-
-  // 6) Permissions API: notifications permission in headless is "denied" by default and unmatched
-  // (skipped — too unreliable)
-
   return { blocked: reasons.length > 0, reasons };
 }
 
@@ -290,19 +262,6 @@ export function idToSource(id: string): string {
   if (/^https?:\/\//i.test(decoded)) return decoded;
   return decoded;
 }
-
-// ---------------------------------------------------------------------
-// SHORTLINK CREATION (client-side, follows user's script pattern)
-// ---------------------------------------------------------------------
-// Pattern from user's working script:
-//   1. Try main API (cfg.shortlinkApi) directly
-//   2. If CORS fails ("Failed to fetch"), switch to apiFallback (proxy)
-//   3. Retry up to 5 times per endpoint with new random codes
-//   4. Shortlink format: https://twinhd.biz.id/#<5-char-code>
-//
-// The apiFallback is the PHP CORS proxy (twinhd_cors.php) on the user's
-// hosting. Upload it once → shortlinks work from any domain.
-
 function generateShortCode(): string {
   return Math.random().toString(36).substring(2, 7);
 }
@@ -341,10 +300,6 @@ export async function createShortlink(targetUrl: string): Promise<{
   if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
     throw new Error("Valid URL is required");
   }
-
-  // ─── Try 1: Server-side API route (DEV ONLY — localhost) ───
-  // Only try /api/shortlink when running on localhost (dev preview).
-  // In production (static site), skip entirely to avoid 405/404 errors.
   const isLocalhost = typeof window !== "undefined" &&
     (window.location.hostname === "localhost" ||
      window.location.hostname === "127.0.0.1" ||
@@ -370,9 +325,6 @@ export async function createShortlink(targetUrl: string): Promise<{
       // Fall through to direct API
     }
   }
-
-  // ─── Try 2: Client-side direct API + PHP proxy fallback ───
-  // Pattern from user's script: try direct API → if CORS fails → try proxy
   const endpoints = [cfg.shortlinkApi];
   if (cfg.shortlinkApiFallback) {
     endpoints.push(cfg.shortlinkApiFallback);
